@@ -73,9 +73,7 @@ body {
     user-select:none;
     -webkit-user-select:none;
   }
-  #btnFire { background:rgba(255,200,0,0.35); }
-  #btnLaser { background:rgba(80,180,255,0.35); }
-  #btnBomb { background:rgba(255,100,50,0.35); }
+  #btnBomb { background:rgba(255,100,50,0.4); width:76px; height:76px; font-size:15px; }
 }
 
 @media (max-width:400px){
@@ -94,8 +92,6 @@ body {
 <div id="canvasWrap">
 <canvas id="gameCanvas" width="480" height="640"></canvas>
 <div id="touchControls">
-  <button id="btnFire" class="tbtn">開火</button>
-  <button id="btnLaser" class="tbtn">雷射</button>
   <button id="btnBomb" class="tbtn">炸彈</button>
 </div>
 </div>
@@ -149,6 +145,10 @@ const cloudTintCtx = cloudTintCanvas.getContext('2d');
 
 
 
+
+// 偵測是否為觸控裝置：手機上主砲跟雷射改成自動持續開火，
+// 讓唯一的手指可以專心拖曳移動，不用一直按著開火鍵
+const isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 
 // 手機/縮放畫面下，CSS顯示尺寸可能跟canvas內部解析度(480x640)不同，
 // 觸控/滑鼠座標需要換算比例，否則在小螢幕手機上操作會偏移不準
@@ -606,7 +606,7 @@ function initGame(){
     bombCount:1,
     alive:true,
     prevX: W/2, bankAngle:0, muzzleFlash:0, coinCombo:0,
-    rightFiring:false, heavyLaserActive:false, autoFire:false, touchFireBtn:false
+    rightFiring:isTouchDevice, heavyLaserActive:false, autoFire:isTouchDevice, touchFireBtn:false
   };
   isNewRecord=false;
   bombFlash=0;
@@ -1342,7 +1342,7 @@ function draw(){
     ctx.fillStyle='#8cf'; ctx.font='bold 11px monospace'; ctx.textAlign='center';
     ctx.fillText('雷射砲 ▶▶▶',W/2,H-30);
   }
-  if(player.autoFire){
+  if(player.autoFire && !isTouchDevice){
     ctx.fillStyle='#ff0'; ctx.font='9px monospace'; ctx.textAlign='left';
     ctx.fillText('主砲持續開火中(再點左鍵停止)',8,H-24);
   }
@@ -1380,10 +1380,16 @@ function drawTitle(){
 
   ctx.fillStyle='#aaa';
   ctx.font='13px monospace';
-  ctx.fillText('方向鍵/WASD 或 滑鼠移動',W/2,282);
-  ctx.fillText('空白鍵射擊，滑鼠左鍵點一下切換持續開火',W/2,300);
-  ctx.fillText('按住滑鼠右鍵：雷射光束(寬度/傷害隨武器等級成長)',W/2,318);
-  ctx.fillText('B 鍵 炸彈清屏(可存5顆)',W/2,336);
+  if(isTouchDevice){
+    ctx.fillText('拖曳畫面移動戰機',W/2,282);
+    ctx.fillText('主砲與雷射會自動持續開火，專心閃避即可',W/2,300);
+    ctx.fillText('點畫面右下角「炸彈」按鈕清屏(可存5顆)',W/2,318);
+  } else {
+    ctx.fillText('方向鍵/WASD 或 滑鼠移動',W/2,282);
+    ctx.fillText('空白鍵射擊，滑鼠左鍵點一下切換持續開火',W/2,300);
+    ctx.fillText('按住滑鼠右鍵：雷射光束(寬度/傷害隨武器等級成長)',W/2,318);
+    ctx.fillText('B 鍵 炸彈清屏(可存5顆)',W/2,336);
+  }
 
   ctx.fillStyle='#4f4';
   ctx.font='13px monospace';
@@ -1496,11 +1502,7 @@ function bindHoldButton(el, onStart, onEnd){
   el.addEventListener('touchend',   e=>{ e.preventDefault(); e.stopPropagation(); onEnd&&onEnd(); }, {passive:false});
   el.addEventListener('touchcancel',e=>{ e.preventDefault(); e.stopPropagation(); onEnd&&onEnd(); }, {passive:false});
 }
-const btnFire=document.getElementById('btnFire');
-const btnLaser=document.getElementById('btnLaser');
 const btnBomb=document.getElementById('btnBomb');
-bindHoldButton(btnFire, ()=>{ player.touchFireBtn=true; }, ()=>{ player.touchFireBtn=false; });
-bindHoldButton(btnLaser, ()=>{ if(state==='play') player.rightFiring=true; }, ()=>{ player.rightFiring=false; });
 bindHoldButton(btnBomb, ()=>{ if(state==='play') useBomb(); }, null);
 
 // ─── Mouse controls (desktop) ─────────────────────────────────────
