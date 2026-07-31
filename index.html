@@ -47,6 +47,37 @@ body {
   margin-bottom:4px;
 }
 #ui span { color:#ff0; text-shadow:0 0 4px rgba(255,255,0,0.5); }
+
+#canvasWrap { position:relative; width:100%; }
+#touchControls { display:none; }
+/* 只在支援觸控的裝置上顯示這些按鈕，滑鼠/鍵盤裝置不受影響 */
+@media (hover: none) and (pointer: coarse) {
+  #touchControls {
+    display:block;
+    position:absolute;
+    right:4%;
+    bottom:6%;
+    z-index:10;
+  }
+  .tbtn {
+    display:block;
+    width:64px; height:64px;
+    margin-top:10px;
+    border-radius:50%;
+    border:2px solid rgba(255,255,255,0.6);
+    background:rgba(20,30,50,0.55);
+    color:#fff;
+    font-size:13px;
+    font-family:'Courier New', monospace;
+    touch-action:none;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  #btnFire { background:rgba(255,200,0,0.35); }
+  #btnLaser { background:rgba(80,180,255,0.35); }
+  #btnBomb { background:rgba(255,100,50,0.35); }
+}
+
 @media (max-width:400px){
   #ui{ font-size:10px; }
 }
@@ -60,7 +91,14 @@ body {
   <div>最高分: <span id="hiEl">0</span></div>
   <div>命: <span id="livesEl">❤❤❤</span></div>
 </div>
+<div id="canvasWrap">
 <canvas id="gameCanvas" width="480" height="640"></canvas>
+<div id="touchControls">
+  <button id="btnFire" class="tbtn">開火</button>
+  <button id="btnLaser" class="tbtn">雷射</button>
+  <button id="btnBomb" class="tbtn">炸彈</button>
+</div>
+</div>
 </div>
 
 <script>
@@ -568,7 +606,7 @@ function initGame(){
     bombCount:1,
     alive:true,
     prevX: W/2, bankAngle:0, muzzleFlash:0, coinCombo:0,
-    rightFiring:false, heavyLaserActive:false, autoFire:false
+    rightFiring:false, heavyLaserActive:false, autoFire:false, touchFireBtn:false
   };
   isNewRecord=false;
   bombFlash=0;
@@ -743,7 +781,7 @@ function inSafeZone(x,y){
 const BOMB_MAX=5;
 // ─── Laser (weapon tier 26+) ──────────────────────────────────────
 function updateLaser(){
-  if(!hasLaser(player.weaponLevel) || !(keys['Space']||player.autoFire)){
+  if(!hasLaser(player.weaponLevel) || !(keys['Space']||player.autoFire||player.touchFireBtn)){
     player.laserActive=false; player.curvedLaserTarget=null; player.curvedLaserCtrl=null;
     return;
   }
@@ -908,7 +946,7 @@ function update(){
 
   // shoot
   if(player.shotCooldown>0) player.shotCooldown--;
-  if((keys['Space']||player.autoFire) && player.shotCooldown===0){
+  if((keys['Space']||player.autoFire||player.touchFireBtn) && player.shotCooldown===0){
     const [lanes,spread]=getWeaponConfig(player.weaponLevel);
     const dmg=getBulletDamage(player.weaponLevel);
     player.shotCooldown = Math.max(4, 10-Math.floor(player.weaponLevel*0.6));
@@ -942,7 +980,7 @@ function update(){
 
   // 螺旋彈幕 (16階解鎖)：獨立冷卻時間，持續射擊時每隔一段時間放出一圈360度環狀彈
   if(player.spiralCooldown>0) player.spiralCooldown--;
-  if(hasSpiralBurst(player.weaponLevel) && (keys['Space']||player.autoFire) && player.spiralCooldown===0){
+  if(hasSpiralBurst(player.weaponLevel) && (keys['Space']||player.autoFire||player.touchFireBtn) && player.spiralCooldown===0){
     player.spiralCooldown=38;
     const dmg=getBulletDamage(player.weaponLevel);
     const ringN=Math.min(16,10+Math.floor((player.weaponLevel-16)/2));
@@ -957,7 +995,7 @@ function update(){
 
   // homing missile (unlocked at weapon level >= 6), scales with weapon tier
   if(player.missileCooldown>0) player.missileCooldown--;
-  if(player.weaponLevel>=6 && (keys['Space']||player.autoFire) && player.missileCooldown===0){
+  if(player.weaponLevel>=6 && (keys['Space']||player.autoFire||player.touchFireBtn) && player.missileCooldown===0){
     const mcfg=getMissileConfig(player.weaponLevel);
     player.missileCooldown=mcfg.cooldown;
     const n=mcfg.count, gap=14;
@@ -1431,9 +1469,7 @@ canvas.addEventListener('touchstart', e=>{
   const t=e.touches[0];
   const p=getCanvasPos(t.clientX,t.clientY);
   touchX=p.x; touchY=p.y;
-  if(state==='title'||state==='over'){ keys['Enter']=true; setTimeout(()=>keys['Enter']=false,100); return; }
-  // tap right side = shoot
-  if(touchX>W*0.6) keys['Space']=true;
+  if(state==='title'||state==='over'){ initGame(); state='play'; return; }
 }, {passive:false});
 
 canvas.addEventListener('touchmove', e=>{
@@ -1451,8 +1487,21 @@ canvas.addEventListener('touchmove', e=>{
 
 canvas.addEventListener('touchend', e=>{
   e.preventDefault();
-  keys['Space']=false; touchX=null; touchY=null;
+  touchX=null; touchY=null;
 }, {passive:false});
+
+// 手機專用按鈕：開火/雷射/炸彈，跟畫布的拖曳移動完全分開，避免互相干擾
+function bindHoldButton(el, onStart, onEnd){
+  el.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation(); onStart(); }, {passive:false});
+  el.addEventListener('touchend',   e=>{ e.preventDefault(); e.stopPropagation(); onEnd&&onEnd(); }, {passive:false});
+  el.addEventListener('touchcancel',e=>{ e.preventDefault(); e.stopPropagation(); onEnd&&onEnd(); }, {passive:false});
+}
+const btnFire=document.getElementById('btnFire');
+const btnLaser=document.getElementById('btnLaser');
+const btnBomb=document.getElementById('btnBomb');
+bindHoldButton(btnFire, ()=>{ player.touchFireBtn=true; }, ()=>{ player.touchFireBtn=false; });
+bindHoldButton(btnLaser, ()=>{ if(state==='play') player.rightFiring=true; }, ()=>{ player.rightFiring=false; });
+bindHoldButton(btnBomb, ()=>{ if(state==='play') useBomb(); }, null);
 
 // ─── Mouse controls (desktop) ─────────────────────────────────────
 canvas.addEventListener('contextmenu', e=>{ e.preventDefault(); });
